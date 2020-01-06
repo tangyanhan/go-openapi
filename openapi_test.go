@@ -53,7 +53,7 @@ func TestPathOp(t *testing.T) {
 type Book struct {
 	Name   string `json:"name" validate:"required,min=1,max=128"`
 	Author string `json:"author" validate:"required,min=1,max=128"`
-	Date   string `json:"date" doc:"format=date"`
+	Date   string `json:"date" format:"date"`
 }
 
 // ReplyError error reply

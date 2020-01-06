@@ -8,6 +8,7 @@ import (
 // Router is a extract of api path.
 // router grouped in multiple levels can share parameters(path/query/header/etc)
 type Router interface {
+	Root() *OpenAPI
 	WithParam(param *Param) Router
 	WithPathParam(name, description string) Router
 	WithTags(tags ...string) Router
@@ -47,6 +48,11 @@ func newRouter(root *OpenAPI) *router {
 	}
 }
 
+// Root return document root
+func (r *router) Root() *OpenAPI {
+	return r.root
+}
+
 // GET short cut
 func (r *router) GET(path, summary, description string) *Operation {
 	return r.Method("get", path, summary, description)
@@ -67,11 +73,11 @@ func (r *router) DELETE(path, summary, description string) *Operation {
 }
 
 func (r *router) PATCH(path, summary, description string) *Operation {
-	return r.Method("post", path, summary, description)
+	return r.Method("patch", path, summary, description)
 }
 
 func (r *router) HEAD(path, summary, description string) *Operation {
-	return r.Method("post", path, summary, description)
+	return r.Method("head", path, summary, description)
 }
 
 // Method add method to router
@@ -87,7 +93,7 @@ func (r *router) Method(method, path, summary, description string) *Operation {
 		}
 	}
 	if !exists {
-		apiPath = &Path{
+		newPath := &Path{
 			root:       r.root,
 			operations: make(opMap),
 		}
@@ -95,14 +101,17 @@ func (r *router) Method(method, path, summary, description string) *Operation {
 		pathParts := []string{path}
 		retriveUpstream(func(upstream *router) {
 			pathParts = append(pathParts, upstream.path)
-			apiPath.Parameters = append(apiPath.Parameters, upstream.params...)
+			newPath.Parameters = append(newPath.Parameters, upstream.params...)
 		})
 
 		reverse(pathParts)
 		fullPath := joinPathParts(pathParts...)
-
-		r.paths[path] = apiPath
-		r.root.Paths[fullPath] = apiPath
+		apiPath, exists = r.root.Paths[fullPath]
+		if !exists {
+			r.paths[path] = newPath
+			r.root.Paths[fullPath] = newPath
+			apiPath = newPath
+		}
 	}
 	tags := make([]string, 0)
 	retriveUpstream(func(upstream *router) {

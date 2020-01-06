@@ -8,6 +8,7 @@ package openapi
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/ghodss/yaml"
@@ -37,8 +38,11 @@ var (
 	ErrInvalidSchemaDoc = errors.New("invalid SchemaDoc method given")
 )
 
-// MimeJSON This is the only supported media type for the time being
-const MimeJSON = "application/json"
+// Supported mime types when using shortcuts
+const (
+	MimeJSON = "application/json"
+	MimeYAML = "application/yaml"
+)
 
 // New create OpenAPI document object and set it as global document root
 func New(version string, info Info) (*OpenAPI, error) {
@@ -128,6 +132,32 @@ func (o *OpenAPI) AddParam(key string, param *Param) string {
 	return "#/components/parameters/" + key
 }
 
+// GetParam return param
+func (o *OpenAPI) GetParam(key string) *Param {
+	param, ok := o.Components.Parameters[key]
+	if !ok {
+		panic("failed to find param with key:" + key)
+	}
+	return param
+}
+
+// AddHeader add param definition to global components
+func (o *OpenAPI) AddHeader(key string, param *Param) string {
+	param.root = o
+	param.In = "header"
+	o.Components.Headers[key] = param
+	return "#/components/headers/" + key
+}
+
+// GetHeader return param
+func (o *OpenAPI) GetHeader(key string) *Param {
+	param, ok := o.Components.Headers[key]
+	if !ok {
+		panic("failed to find param with key:" + key)
+	}
+	return param
+}
+
 // AddPath to OpenAPI paths section
 func (o *OpenAPI) AddPath(path, summary, description string) *Path {
 	if _, exists := o.Paths[path]; exists {
@@ -162,8 +192,24 @@ func (p *Path) AddOperation(method string) *Operation {
 // NewPathParam create new path param
 func NewPathParam(name, description string) *Param {
 	return &Param{
+		Name:        name,
 		In:          PathParam,
 		Description: description,
+	}
+}
+
+// NewQueryParam create new query param
+func NewQueryParam(name, description string, example interface{}) *Param {
+	tv := reflect.TypeOf(example)
+	typ, _ := kindToType(tv.Kind())
+	return &Param{
+		In:          QueryParam,
+		Name:        name,
+		Description: description,
+		Example:     example,
+		Schema: &Schema{
+			Type: typ,
+		},
 	}
 }
 

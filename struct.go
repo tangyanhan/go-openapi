@@ -149,20 +149,18 @@ func parseStruct(tv reflect.Type, rv reflect.Value) (schema *Schema, err error) 
 			return nil, fmt.Errorf("error parsing field %s", f.Name)
 		}
 		// Embeded tag
-		if jsonTag == "," {
+		if jsonTag == "," || jsonTag == ",inline" {
 			schema.AllOf = append(schema.AllOf, s)
 			continue
 		}
 		p := strings.Split(jsonTag, ",")
 		propName := p[0]
 
-		// Add more tags to schema
-		docTag, ok := f.Tag.Lookup("doc")
-		if ok {
-			if err := parseDocTag(docTag, s); err != nil {
-				return nil, err
-			}
+		// Parse custom tags
+		if err := parseCustomTags(f.Tag, s); err != nil {
+			return nil, err
 		}
+		// Required is special
 		vTag, ok := f.Tag.Lookup("validate")
 		var required bool
 		if ok {
@@ -176,33 +174,44 @@ func parseStruct(tv reflect.Type, rv reflect.Value) (schema *Schema, err error) 
 	return schema, nil
 }
 
-func parseDocTag(docTag string, schema *Schema) error {
-	parts := strings.Split(docTag, ";")
-	for _, p := range parts {
-		kv := strings.SplitN(p, "=", 2)
-		if len(kv) != 2 {
-			return fmt.Errorf("error near %s", p)
-		}
-		k, v := kv[0], kv[1]
-		switch k {
-		case "format":
+func parseCustomTags(tag reflect.StructTag, schema *Schema) error {
+	tagParsers := map[string]func(v string, schema *Schema) error{
+		"description": func(v string, schema *Schema) error {
+			schema.Description = v
+			return nil
+		},
+		"format": func(v string, schema *Schema) error {
 			schema.Format = v
-		case "pattern":
+			return nil
+		},
+		"pattern": func(v string, schema *Schema) error {
 			schema.Pattern = v
-		case "enum":
+			return nil
+		},
+		"enum": func(v string, schema *Schema) error {
 			enums := strings.Split(v, "|")
 			if len(enums) == 0 {
 				return errors.New("no enum values")
 			}
 			schema.Enum = enums
-		case "default":
+			return nil
+		},
+		"default": func(v string, schema *Schema) error {
 			defaultValue, err := tagToValue(schema.Type, v)
 			if err != nil {
 				return fmt.Errorf("error with default value:%s", err.Error())
 			}
 			schema.Default = defaultValue
-		case "description":
-			schema.Description = v
+			return nil
+		},
+	}
+	for key, fn := range tagParsers {
+		v, ok := tag.Lookup(key)
+		if !ok {
+			continue
+		}
+		if err := fn(v, schema); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -246,62 +255,62 @@ func parseValidateTag(vTag string, schema *Schema) (required bool, err error) {
 	}
 	parts := strings.Split(vTag, ",")
 	for _, p := range parts {
-		var (
-			isMax bool
-			isMin bool
-		)
-		var v string
 		if p == "required" {
 			required = true
-		} else if strings.HasPrefix(p, "max=") {
-			v = strings.TrimPrefix(p, "max=")
+			continue
+		}
+
+		var v string
+		var isMax bool
+		if strings.HasPrefix(p, "max=") {
 			isMax = true
+			v = strings.TrimPrefix(p, "max=")
 		} else if strings.HasPrefix(p, "min=") {
 			v = strings.TrimPrefix(p, "min=")
-			isMin = true
+		} else {
+			continue
 		}
 
-		if isMin || isMax {
-			switch schema.Type {
-			case "string":
-				value, err := strconv.ParseInt(v, 10, 64)
-				if err != nil {
-					return false, fmt.Errorf("failed to parse tag of value %s:%s", v, err.Error())
-				}
-				if isMax {
-					schema.MaxLength = &value
-				} else {
-					schema.MinLength = &value
-				}
-
-			case "integer":
-				value, err := strconv.ParseInt(v, 10, 64)
-
-				if err != nil {
-					return false, fmt.Errorf("failed to parse tag of value %s:%s", v, err.Error())
-				}
-				if isMax {
-					schema.Maximum = value
-				} else {
-					schema.Minimum = &value
-				}
-
-			case "number":
-				value, err := strconv.ParseFloat(v, 64)
-				if isMax {
-					schema.Maximum = value
-				} else {
-					schema.Minimum = value
-				}
-
-				if err != nil {
-					return false, fmt.Errorf("failed to parse max tag of value %s:%s", v, err.Error())
-				}
-			default:
-				return false, fmt.Errorf("unknown max value %s for type %s", v, schema.Type)
+		switch schema.Type {
+		case "string":
+			value, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return false, fmt.Errorf("failed to parse tag of value %s:%s", v, err.Error())
 			}
-		}
 
+			if isMax {
+				schema.MaxLength = &value
+			} else {
+				schema.MinLength = &value
+			}
+
+		case "integer":
+			value, err := strconv.ParseInt(v, 10, 64)
+			if err != nil {
+				return false, fmt.Errorf("failed to parse tag of value %s:%s", v, err.Error())
+			}
+
+			if isMax {
+				schema.Maximum = value
+			} else {
+				schema.Minimum = value
+			}
+
+		case "number":
+			value, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return false, fmt.Errorf("failed to parse max tag of value %s:%s", v, err.Error())
+			}
+
+			if isMax {
+				schema.Maximum = value
+			} else {
+				schema.Minimum = value
+			}
+
+		default:
+			return false, fmt.Errorf("unknown max value %s for type %s", v, schema.Type)
+		}
 	}
 	return required, nil
 }

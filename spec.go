@@ -10,6 +10,7 @@ type respMap map[string]*Response
 type OpenAPI struct {
 	OpenAPI    string      `json:"openapi"`
 	Info       Info        `json:"info"`
+	Servers    []Server    `json:"servers,omitempty"`
 	Paths      pathMap     `json:"paths"`
 	Components *Components `json:"components,omitempty"`
 }
@@ -21,6 +22,20 @@ type Info struct {
 	TermsOfService string   `json:"termsOfService,omitempty"`
 	Contact        *Contact `json:"contact,omitempty"`
 	License        *License `json:"license,omitempty"`
+}
+
+// Server server object
+type Server struct {
+	URL         string                    `json:"url" validate:"required"`
+	Description string                    `json:"description,omitempty"`
+	Variables   map[string]ServerVariable `json:"variables,omitempty"`
+}
+
+// ServerVariable is used to replace some things in url schema
+type ServerVariable struct {
+	Enum        []string `json:"enum,omitempty"`
+	Description string   `json:"description,omitempty"`
+	Default     string   `json:"default" validate:"required"`
 }
 
 // Contact info
@@ -130,7 +145,7 @@ type Components struct {
 	Parameters    paramMap         `json:"parameters,omitempty"`
 	Examples      exampleMap       `json:"examples,omitempty"`
 	RequestBodies reqBodyMap       `json:"requestBodies,omitempty"`
-	Headers       paramMap         `json:"headers,omitempty"`
+	Headers       paramMap         `json:"-"`
 	Links         map[string]*Link `json:"links,omitempty"`
 }
 

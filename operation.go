@@ -52,6 +52,26 @@ func (o *Operation) Returns(code int, description string, key string, v interfac
 	return o
 }
 
+// ReturnsNonJSON return something not json
+func (o *Operation) ReturnsNonJSON(code int, description string,
+	mimeType string, headers map[string]*Param, schema *Schema, example interface{}) *Operation {
+	strCode := strconv.Itoa(code)
+	if _, exists := o.Responses[strCode]; exists {
+		panic("operation " + o.OperationID + " already returns code " + strCode)
+	}
+	o.Responses[strCode] = &Response{
+		Description: description,
+		Headers:     headers,
+		Content: mediaTypeMap{
+			mimeType: &MediaType{
+				Schema:  schema,
+				Example: example,
+			},
+		},
+	}
+	return o
+}
+
 // ReturnDefault add default response.
 // A default response is the response to be used when none of defined codes match the situation.
 func (o *Operation) ReturnDefault(description string, key string, v interface{}) *Operation {
@@ -83,6 +103,20 @@ func (o *Operation) ReadJSON(description string, required bool, key string, v in
 			MimeJSON: &MediaType{
 				Schema:  schema,
 				Example: v,
+			},
+		},
+	}
+	return o
+}
+
+// Read read raw body of any kind
+func (o *Operation) Read(description string, required bool, mimeType string, example interface{}) *Operation {
+	o.RequestBody = &RequestBody{
+		Description: description,
+		Required:    required,
+		Content: mediaTypeMap{
+			mimeType: &MediaType{
+				Example: example,
 			},
 		},
 	}
